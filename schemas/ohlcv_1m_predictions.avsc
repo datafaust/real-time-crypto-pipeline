@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "Ohlcv1mPrediction",
+  "namespace": "com.crypto",
+  "fields": [
+    {"name": "SYMBOL_VALUE", "type": "string"},
+    {"name": "WINDOW_START", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "PREDICTED_VOLUME", "type": "double"},
+    {"name": "MODEL_VERSION", "type": "string"},
+    {"name": "FEATURES_LAG_MINUTES", "type": {"type": "array", "items": "int"}},
+    {"name": "CREATED_AT", "type": {"type": "long", "logicalType": "timestamp-millis"}}
+  ]
+}

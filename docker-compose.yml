@@ -1,0 +1,278 @@
+version: "3.8"
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports: ["2181:2181"]
+    volumes:
+      - zk-data:/var/lib/zookeeper/data
+      - zk-txn-logs:/var/lib/zookeeper/log
+    networks: [kafka-net]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks: [kafka-net]
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+    ports: ["8081:8081"]
+    networks: [kafka-net]
+
+  ksqldb-server:
+    image: confluentinc/cp-ksqldb-server:7.6.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    environment:
+      KSQL_LISTENERS: http://0.0.0.0:8088
+      KSQL_BOOTSTRAP_SERVERS: kafka:9092
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KSQL_KSQL_SERVICE_ID: ksqldb_
+      KSQL_STREAMS_AUTO_OFFSET_RESET: earliest
+      KSQL_HEAP_OPTS: "-Xms512m -Xmx512m"
+      KSQL_KSQL_STREAMS_PROCESSING_GUARANTEE: exactly_once_v2
+    volumes:
+      - ./streaming/sql:/sql
+    ports: ["8088:8088"]
+    networks: [kafka-net]
+
+  ksqldb-cli:
+    image: confluentinc/cp-ksqldb-cli:7.6.1
+    depends_on:
+      ksqldb-server:
+        condition: service_started
+    entrypoint: /bin/sh
+    tty: true
+    volumes:
+      - ./streaming/sql:/sql
+    networks: [kafka-net]
+
+  connect:
+    image: confluentinc/cp-kafka-connect:7.6.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    ports: ["8083:8083"]
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: "connect-cluster"
+      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_PLUGIN_PATH: /usr/share/java,/etc/kafka-connect/jars
+    volumes:
+      - ./connect/plugins:/etc/kafka-connect/jars
+    networks: [kafka-net]
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crypto
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db_init:/docker-entrypoint-initdb.d
+    networks: [kafka-net]
+
+  api-gw:
+    build:
+      context: ./api_gw
+    depends_on:
+      postgres:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://readonly:readonly@postgres:5432/crypto
+      API_JWT_SECRET: change-me
+      # Allow localhost, your LAN dev URL, and future Vercel
+      CORS_ALLOW_ORIGINS: http://localhost:3000,http://10.2.1.50:3000,https://your-vercel-app.vercel.app
+    volumes:
+      - ./api_gw:/app
+    ports: ["8085:80"]
+    networks: [kafka-net]
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash","-lc"]
+    command: |
+      "kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic raw_ticks --replication-factor 1 --partitions 1 && \
+       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic clean_ticks --replication-factor 1 --partitions 1 && \
+       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ohlcv_1m --replication-factor 1 --partitions 1 && \
+       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ohlcv_1m_out_avro --replication-factor 1 --partitions 1 && \
+       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ohlcv_1m_out_json --replication-factor 1 --partitions 1 && \
+       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic predictions_1m --replication-factor 1 --partitions 1 && \
+       echo '✅ Kafka topics ready' && sleep infinity"
+    networks: [kafka-net]
+
+  topic-retention-raw:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash","-lc"]
+    environment:
+      RAW_RETENTION_HOURS: ${RAW_RETENTION_HOURS:-24}
+    command: |
+      '
+      set -e
+      r_ms=$(( ${RAW_RETENTION_HOURS} * 60 * 60 * 1000 ))
+      echo "Setting raw_ticks retention.ms=${r_ms} (≈ ${RAW_RETENTION_HOURS}h)"
+      kafka-configs --bootstrap-server kafka:9092 \
+        --alter --entity-type topics --entity-name raw_ticks \
+        --add-config retention.ms=${r_ms},retention.bytes=-1,cleanup.policy=delete
+      echo "✅ retention applied to raw_ticks"
+      sleep infinity
+      '
+    networks: [kafka-net]
+
+  inference_service:
+    build:
+      context: .
+      dockerfile: inference_service/Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      IN_TOPIC: ohlcv_1m_out_json
+      OUT_TOPIC: predictions_1m
+      MODEL_PATH: /models/model.pkl
+      EMA_WINDOW: "5"
+      GROUP_ID: inference_service_v3
+    volumes:
+      - models:/models:ro
+      - ./schemas:/schemas:ro
+    restart: unless-stopped
+    networks: [kafka-net]
+
+  # one-off/manual training (unchanged)
+  trainer:
+    build:
+      context: .
+      dockerfile: trainer/Dockerfile
+    environment:
+      PG_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/crypto
+      MODEL_PATH: /models/model.pkl
+      SOURCE_TABLE: "ohlcv_1m"
+      LOOKBACK_MINUTES: "7"
+      MAX_LAGS: "3"
+      MIN_ROWS_PER_SYMBOL: "3"
+    volumes:
+      - models:/models
+    networks: [kafka-net]
+
+  # automated periodic retraining (every N minutes)
+  trainer-cron:
+    build:
+      context: .
+      dockerfile: trainer/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_started
+    environment:
+      PG_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/crypto
+      MODEL_PATH: /models/model.pkl
+      SOURCE_TABLE: "ohlcv_1m"
+      LOOKBACK_MINUTES: "${CRON_LOOKBACK_MINUTES:-720}"   # 12h by default
+      MAX_LAGS: "6"                                       # a bit richer for retrains
+      MIN_ROWS_PER_SYMBOL: "30"                           # ensure a sane sample
+      TRAIN_INTERVAL_MINUTES: "${TRAIN_INTERVAL_MINUTES:-240}"  # 4h default
+    command: >
+      /bin/sh -lc '
+        set -e;
+        echo "[trainer-cron] starting loop (every ${TRAIN_INTERVAL_MINUTES}m)";
+        while true; do
+          echo "[trainer-cron] $(date -Iseconds) running trainer once...";
+          # call the same entrypoint the one-off trainer uses:
+          python -u /app/train.py;
+          echo "[trainer-cron] $(date -Iseconds) done. sleeping...";
+          sleep ${TRAIN_INTERVAL_MINUTES}m;
+        done
+      '
+    volumes:
+      - models:/models
+    restart: unless-stopped
+    networks: [kafka-net]
+
+  producer:
+    build:
+      context: .
+      dockerfile: producer/Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_TOPIC: raw_ticks
+      SYMBOLS: "btcusdt,ethusdt,solusdt"
+      BINANCE_ENDPOINTS: "wss://data-stream.binance.vision/stream,wss://stream.binance.us:9443/stream"
+      MESSAGE_TIMEOUT_MS: "120000"
+      WS_PING_INTERVAL: "180"
+      WS_PING_TIMEOUT: "20"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    networks: [kafka-net]
+
+networks:
+  kafka-net:
+
+volumes:
+  pgdata:
+  models:
+  zk-data:
+  zk-txn-logs:
+  kafka-data:

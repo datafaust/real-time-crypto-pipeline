@@ -1,0 +1,4 @@
+confluent-kafka==2.5.0
+websockets==12.0
+python-dotenv==1.0.1
+ujson==5.10.0

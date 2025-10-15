@@ -1,0 +1,39 @@
+{
+  "name": "jdbc_sink_ohlcv",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+
+    "topics": "ohlcv_1m_out_avro",
+
+    "connection.url": "jdbc:postgresql://postgres:5432/crypto",
+    "connection.user": "postgres",
+    "connection.password": "postgres",
+
+    "auto.create": "true",
+    "auto.evolve": "true",
+
+    "insert.mode": "upsert",
+    "pk.mode": "record_value",
+    "pk.fields": "SYMBOL_VALUE,WINDOW_START",
+
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+
+    "table.name.format": "ohlcv_1m",
+
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "dlq-ohlcv",
+    "errors.deadletterqueue.topic.replication.factor": "1",
+    "errors.deadletterqueue.topic.partitions": "1",
+    "errors.deadletterqueue.context.headers.enable": "true",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true",
+
+    "max.retries": "10",
+    "retry.backoff.ms": "3000",
+    "delete.enabled": "false",
+    "name": "jdbc_sink_ohlcv"
+  }
+}
