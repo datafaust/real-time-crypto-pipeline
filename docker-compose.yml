@@ -81,7 +81,9 @@ services:
     networks: [kafka-net]
 
   connect:
-    image: confluentinc/cp-kafka-connect:7.6.1
+    #image: confluentinc/cp-kafka-connect:7.6.1
+    build:
+      context: ./connect
     depends_on:
       kafka:
         condition: service_healthy
@@ -103,7 +105,8 @@ services:
       CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
       CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
-      CONNECT_PLUGIN_PATH: /usr/share/java,/etc/kafka-connect/jars
+      #CONNECT_PLUGIN_PATH: /usr/share/java,/etc/kafka-connect/jars
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
     volumes:
       - ./connect/plugins:/etc/kafka-connect/jars
     networks: [kafka-net]
