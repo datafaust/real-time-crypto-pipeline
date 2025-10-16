@@ -223,9 +223,14 @@ services:
       PG_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/crypto
       MODEL_PATH: /models/model.pkl
       SOURCE_TABLE: "ohlcv_1m"
-      LOOKBACK_MINUTES: "7"
-      MAX_LAGS: "3"
-      MIN_ROWS_PER_SYMBOL: "3"
+      #LOOKBACK_MINUTES: "7"
+      LOOKBACK_DAYS: "7" 
+      MAX_LAGS: "10"
+      ROWS_PER_SYMBOL_CAP: "12000" 
+      MIN_ROWS_PER_SYMBOL: "200"
+      RIDGE_ALPHA: "0.1,0.5,1.0,2.0"
+      VALIDATION_FRACTION: "0.1"
+      ENABLE_HOD_FEATURES: "0"
     volumes:
       - models:/models
     networks: [kafka-net]
