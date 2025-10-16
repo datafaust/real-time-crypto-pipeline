@@ -270,6 +270,20 @@ services:
       retries: 10
     networks: [kafka-net]
 
+  cloudflared:
+    image: cloudflare/cloudflared:2024.10.0
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    restart: unless-stopped
+    networks:
+      - pipeline_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2000/ready || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
 networks:
   kafka-net:
 
