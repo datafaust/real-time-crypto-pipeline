@@ -132,7 +132,7 @@ services:
       DATABASE_URL: postgresql://readonly:readonly@postgres:5432/crypto
       API_JWT_SECRET: change-me
       # Allow localhost, your LAN dev URL, and future Vercel
-      CORS_ALLOW_ORIGINS: http://localhost:3000,http://10.2.1.50:3000,https://crypto-dashboard-one-xi.vercel.app
+      CORS_ALLOW_ORIGINS: http://localhost:3000,http://10.2.1.50:3000,https://crypto-dashboard-fausto-lopezs-projects.vercel.app
     volumes:
       - ./api_gw:/app
     ports: ["8085:80"]
