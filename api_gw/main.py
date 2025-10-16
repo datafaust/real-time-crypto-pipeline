@@ -9,7 +9,7 @@ app = FastAPI(title="Crypto API Gateway")
 
 # ---------- CORS ----------
 # Supports:
-#   CORS_ALLOW_ORIGINS="http://localhost:3000,https://crypto-dashboard-fausto-lopezs-projects.vercel.app"
+#   CORS_ALLOW_ORIGINS="http://localhost:3000,https://crypto-dashboard-one-xi.vercel.app/"
 #   CORS_ALLOW_ORIGIN_REGEX="https://.*\\.vercel\\.app"
 def _csv(name: str, default: str = ""):
     raw = os.getenv(name, default)
