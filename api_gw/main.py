@@ -134,38 +134,44 @@ async def alignment_range(symbol: str, minutes: int = 60):
 @app.get("/sse/stream")
 async def sse_stream(symbol: str):
     async def event_gen():
-        last_ts = None
         pool = await get_pool()
+        last_ts = None
+        last_pred = None
+
+        # Latest OHLCV minute for the symbol, joined to the prediction for the SAME minute
         sql = '''
-            WITH p AS (
-              SELECT "SYMBOL_VALUE","WINDOW_START" AS p_ts,"PREDICTED_VOLUME","MODEL_VERSION"
-              FROM "predictions_1m"
-              WHERE "SYMBOL_VALUE" = $1
-              ORDER BY "WINDOW_START" DESC
-              LIMIT 1
-            )
-            SELECT o."SYMBOL_VALUE",
-                   TO_TIMESTAMP(o."WINDOW_START"/1000.0) AS "WINDOW_START",
-                   o."VOLUME" AS "ACTUAL_VOLUME",
-                   p."PREDICTED_VOLUME",
-                   p."MODEL_VERSION"
+            SELECT
+              o."SYMBOL_VALUE",
+              TO_TIMESTAMP(o."WINDOW_START"/1000.0) AS "WINDOW_START",
+              o."VOLUME" AS "ACTUAL_VOLUME",
+              p."PREDICTED_VOLUME",
+              p."MODEL_VERSION"
             FROM "ohlcv_1m" o
-            LEFT JOIN p
+            LEFT JOIN "predictions_1m" p
               ON p."SYMBOL_VALUE" = o."SYMBOL_VALUE"
-             AND o."WINDOW_START" = EXTRACT(EPOCH FROM p.p_ts)*1000
+             AND p."WINDOW_START" = TO_TIMESTAMP(o."WINDOW_START"/1000.0)
             WHERE o."SYMBOL_VALUE" = $1
             ORDER BY o."WINDOW_START" DESC
             LIMIT 1;
         '''
+
         while True:
             row = await pool.fetchrow(sql, symbol)
             if row:
+                # format payload
                 payload = dict(row)
-                if payload.get("WINDOW_START") is not None:
-                    payload["WINDOW_START"] = str(payload["WINDOW_START"])
-                ts_key = payload.get("WINDOW_START")
-                if ts_key != last_ts:
+                ts_dt = payload.get("WINDOW_START")
+                ts_iso = ts_dt.isoformat().replace("+00:00", "Z") if ts_dt else None
+                payload["WINDOW_START"] = ts_iso
+
+                pred = payload.get("PREDICTED_VOLUME")
+                # Emit when: new minute OR same minute but prediction flipped from null -> value
+                should_emit = (ts_iso != last_ts) or (ts_iso == last_ts and last_pred is None and pred is not None)
+
+                if should_emit:
                     yield f"data: {json.dumps(payload)}\n\n"
-                    last_ts = ts_key
+                    last_ts = ts_iso
+                    last_pred = pred
+
             await asyncio.sleep(1)
     return StreamingResponse(event_gen(), media_type="text/event-stream")
