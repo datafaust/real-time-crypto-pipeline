@@ -143,6 +143,7 @@ services:
     command: tunnel run --protocol http2
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+      - TUNNEL_EDGE_IP_VERSION=4
     restart: unless-stopped
     depends_on:
       - api-gw 
