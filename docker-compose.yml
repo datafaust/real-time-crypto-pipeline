@@ -311,6 +311,21 @@ services:
     networks: [kafka-net]
 
 
+  pass-watcher:
+    build:
+      context: ./pass_watcher
+    depends_on:
+      postgres:
+        condition: service_started
+    environment:
+      PG_DSN: postgresql://postgres:postgres@postgres:5432/crypto
+      SYMBOLS: "BTCUSDT,ETHUSDT,SOLUSDT"
+      POLL_MS: "1000"         # check once per second
+    restart: unless-stopped
+    networks: [kafka-net]
+
+
+
 networks:
   kafka-net:
 
