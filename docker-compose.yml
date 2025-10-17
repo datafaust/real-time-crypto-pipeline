@@ -291,6 +291,26 @@ services:
       retries: 10
     networks: [kafka-net]
 
+  pred-stats-refresher:
+    image: postgres:16
+    depends_on:
+      postgres:
+        condition: service_started
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: crypto
+      # Optional override; if unset, script defaults to 15
+      PRED_STATS_REFRESH_MINUTES: "${PRED_STATS_REFRESH_MINUTES:-15}"
+    volumes:
+      - ./ops/refresh_pred_stats.sh:/usr/local/bin/refresh_pred_stats.sh:ro
+    command: ["bash","-lc","/usr/local/bin/refresh_pred_stats.sh"]
+    restart: unless-stopped
+    networks: [kafka-net]
+
+
 networks:
   kafka-net:
 
