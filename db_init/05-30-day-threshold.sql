@@ -116,3 +116,8 @@ SELECT DISTINCT ON (m.symbol)
   m.predicted_volume, m.pred_z, m.pred_percentile_30d
 FROM minute_energy_enriched m
 ORDER BY m.symbol, m.ts DESC;
+
+
+-- for refresh materialized view
+CREATE UNIQUE INDEX IF NOT EXISTS ux_pred_stats_30d_mv_symbol
+  ON pred_stats_30d_mv (symbol);
