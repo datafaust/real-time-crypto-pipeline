@@ -138,21 +138,22 @@ services:
     ports: ["8085:80"]
     networks: [kafka-net]
 
-  cloudflared:
-    image: cloudflare/cloudflared:2024.10.0
-    command: tunnel run --protocol http2
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-      - TUNNEL_EDGE_IP_VERSION=4
-    restart: unless-stopped
-    depends_on:
-      - api-gw 
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2000/ready || exit 1"]
-      interval: 15s
-      timeout: 3s
-      retries: 5
-    networks: [kafka-net]
+cloudflared:
+  image: cloudflare/cloudflared:2024.10.0
+  # Pin metrics server so /ready is always on :2000
+  command: tunnel run --protocol http2 --metrics 0.0.0.0:2000
+  environment:
+    - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    - TUNNEL_EDGE_IP_VERSION=4
+  restart: unless-stopped
+  depends_on:
+    - api-gw
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2000/ready || exit 1"]
+    interval: 15s
+    timeout: 3s
+    retries: 5
+  networks: [kafka-net]
 
   kafka-init:
     image: confluentinc/cp-kafka:7.6.1
