@@ -140,11 +140,11 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:2024.10.0
-    # Pin metrics server so /ready is always on :2000
-    command: tunnel run --protocol http2 --metrics 0.0.0.0:2000
+    command: ["tunnel", "run", "--protocol", "http2"]
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
       - TUNNEL_EDGE_IP_VERSION=4
+      - TUNNEL_METRICS=0.0.0.0:2000
     restart: unless-stopped
     depends_on:
       - api-gw
@@ -154,6 +154,7 @@ services:
       timeout: 3s
       retries: 5
     networks: [kafka-net]
+
 
   kafka-init:
     image: confluentinc/cp-kafka:7.6.1
